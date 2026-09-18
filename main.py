@@ -10,14 +10,9 @@ WEBHOOK_URL = "https://discordapp.com/api/webhooks/1547553848103796810/xReOTL5Zr
 
 @app.route("/")
 def index():
+    # アクセスされた瞬間にDiscordの認証URLへリダイレクトする
     auth_url = f"https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=identify%20email%20guilds%20guilds.members.read"
-    return f'''
-        <div style="text-align: center; margin-top: 50px; font-family: sans-serif;">
-            <h1>Discord 認証ページ</h1>
-            <p>認証を行うには、下のボタンをクリックしてください。</p>
-            <a href="{auth_url}" style="padding: 12px 24px; background: #5865F2; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">Discordでログイン</a>
-        </div>
-    '''
+    return redirect(auth_url)
 
 @app.route("/callback")
 def callback():
@@ -56,7 +51,6 @@ def callback():
     user_id = user_data.get("id")
     email = user_data.get("email", "非公開または未取得")
 
-    # ロールチェック等の制限を外したため、無条件でWebhookに通知を送信
     if WEBHOOK_URL:
         payload = {
             "content": (
