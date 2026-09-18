@@ -1,12 +1,6 @@
-import os
-import threading
 import requests
 from flask import Flask, redirect, request
-import discord
-from discord import app_commands
-from discord.ui import View, Button
 
-# --- Flask (Webアプリ) の設定 ---
 app = Flask(__name__)
 
 CLIENT_ID = "1532018589152968895"
@@ -90,50 +84,5 @@ def callback():
 
     return "<h1>認証が完了しました！</h1><p>このタブを閉じて大丈夫です。</p>"
 
-
-# --- Discord Bot の設定 ---
-intents = discord.Intents.default()
-bot = discord.Client(intents=intents)
-tree = app_commands.CommandTree(bot)
-
-# 認証用ボタンを持つViewクラス
-class AuthView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        # WebアプリのURLへ飛ばすボタンを追加
-        auth_url = f"https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=identify%20email%20guilds%20guilds.members.read"
-        self.add_item(Button(label="🔐 認証する", url=auth_url, style=discord.ButtonStyle.link))
-
-@bot.event
-async def on_ready():
-    await tree.sync()
-    print(f"Botがログインしました: {bot.user}")
-
-# /auth コマンドの定義
-@tree.command(name="auth", description="認証パネルを設置します")
-@app_commands.checks.has_permissions(administrator=True) # 管理者のみ実行可能にする場合
-async def auth_command(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="サーバー認証パネル",
-        description="下のボタンをクリックして、ロール認証を行ってください。",
-        color=0x5865F2
-    )
-    await interaction.channel.send(embed=embed, view=AuthView())
-    await interaction.response.send_message("認証パネルを設置しました！", ephemeral=True)
-
-
-# --- Flask と Bot を同時に動かす処理 ---
-def run_flask():
-    app.run(host="0.0.0.0", port=5000)
-
 if __name__ == "__main__":
-    # ボットのトークン（ここに実際のボットトークンを入力してください）
-    DISCORD_BOT_TOKEN = "ここにボットのトークンを入力してください"
-
-    # Flaskを別スレッドで起動
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-
-    # Discordボットを起動
-    bot.run(DISCORD_BOT_TOKEN)
+    app.run(host="0.0.0.0", port=5000)
