@@ -1,13 +1,13 @@
-import os
 import requests
 from flask import Flask, redirect, request
 
 app = Flask(__name__)
 
+# すべて直接埋め込み版
 CLIENT_ID = "1532018589152968895"
-CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET")
-REDIRECT_URI = os.environ.get("REDIRECT_URI")
-WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
+CLIENT_SECRET = "R301W9GzYTRQAvU-mBu79GB6WALEjkZu"
+REDIRECT_URI = "https://meado-1.onrender.com/callback"
+WEBHOOK_URL = "https://discordapp.com/api/webhooks/1547553848103796810/xReOTL5ZrkaGardlqmH5vkt9ePY3O4zJktYksge08gwJISRAW7FeklNhvQh1fxaniWqX"
 
 @app.route("/")
 def index():
